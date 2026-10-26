@@ -1,0 +1,18 @@
+[
+  {
+    "name": "libfurry-macos-arm64.dmg",
+    "platform": "macOS \u00b7 Apple Silicon"
+  },
+  {
+    "name": "libfurry-macos-arm64.zip",
+    "platform": "macOS \u00b7 Apple Silicon"
+  },
+  {
+    "name": "libfurry-macos-x64.dmg",
+    "platform": "macOS \u00b7 Intel"
+  },
+  {
+    "name": "libfurry-macos-x64.zip",
+    "platform": "macOS \u00b7 Intel"
+  }
+]

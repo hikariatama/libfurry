@@ -1,0 +1,63 @@
+# macOS and editor state
+.DS_Store
+._*
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Dependencies, generated output and coverage
+node_modules/
+/app/dist/
+/app/release/
+build/
+.build/
+coverage/
+*.tsbuildinfo
+*.log
+
+# Local configuration, credentials and signing material
+.env*
+!.env.example
+!.env.*.example
+.npmrc
+Secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+*.mobileprovision
+local-signing.sha1
+
+# App data and private test fixtures
+credentials.bin
+settings.json
+session.json
+downloads.json
+search-cache/
+page-snapshots/
+*.damaged-*
+*.part
+*.local.json
+
+*.app/
+*.dSYM/
+
+# Local tooling, File Provider copies and private/generated artifacts
+.claude/
+node_modules*/
+work/
+outputs/
+output/
+audit/
+* [2-9].*
+.env
+.env.*
+*.sqlite*
+*.db
+*.dmg
+*.zip
+test-results/
+playwright-report/
+__pycache__/
+*.py[cod]
