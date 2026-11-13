@@ -1,0 +1,4 @@
+title = "libfurry secret scanning"
+
+[extend]
+useDefault = true

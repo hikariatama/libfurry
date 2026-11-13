@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <title>libfurry · grid fixture</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      const thumbnail = id => {
+        const hue = id % 360;
+        const width = [140, 240, 360, 500][id % 4];
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} 240"><rect width="${width}" height="240" fill="hsl(${hue} 35% 35%)"/><circle cx="${width / 2}" cy="104" r="70" fill="hsl(${hue} 55% 62%)"/><text x="${width / 2}" y="200" text-anchor="middle" fill="white" font-size="22">${id}</text></svg>`;
+        return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+      };
+      const hiddenMiddlePage = new URLSearchParams(location.search).has('hiddenMiddlePage');
+      const accountReaction = new URLSearchParams(location.search).has('accountReaction');
+      const accountBlacklist = new URLSearchParams(location.search).has('accountBlacklist');
+      const slowAccountSearch = new URLSearchParams(location.search).has('slowAccountSearch');
+      const previewFailure = new URLSearchParams(location.search).has('previewFailure');
+      const partialPages = new URLSearchParams(location.search).has('partialPages');
+      const slowNextPage = new URLSearchParams(location.search).has('slowNextPage');
+      let accountRestored = false;
+      const realMedia = new URLSearchParams(location.search).has('realMedia');
+      const realStartPage = Math.max(0, Number(new URLSearchParams(location.search).get('startPage')) || 0);
+      const realPages = realMedia ? fetch('/tests/fixtures/real-pages.local.json').then(response => {
+        if (!response.ok) throw new Error('Local preview fixture was not found');
+        return response.json();
+      }) : Promise.resolve(null);
+      const postsFor = cursor => {
+        const first = cursor.startsWith('b') ? Number(cursor.slice(1)) - 1 : 1000000 - (Math.max(1, Number(cursor) || 1) - 1) * 160;
+        return Array.from({ length: 160 }, (_, index) => {
+          const id = first - index;
+          const hidden = (partialPages && index >= 157) || (hiddenMiddlePage && (cursor === '2' || (!cursor && id !== 1000000 && id !== 999841)));
+          return { id, width: [140, 240, 360, 500][id % 4], height: 240, file_ext: 'jpg', file_url: thumbnail(id), preview_url: previewFailure && id === 1000000 ? 'data:image/png;base64,broken' : thumbnail(id),
+            preview_webp: null, sample_url: thumbnail(id), tags: accountBlacklist && id % 13 === 0 ? 'cat' : 'fox', pools: '', rating: 's', score: 1,
+            fav_count: 0, is_favorited: false, vote: hidden ? 1 : 0, uploader: 'fixture' };
+        });
+      };
+      const pagePosts = async cursor => {
+        const pages = await realPages;
+        const posts = pages ? pages[realStartPage + (Number(cursor) || 1) - 1] || [] : postsFor(cursor);
+        return accountRestored && accountReaction ? posts.map(post => ({ ...post, vote: post.id % 11 === 0 ? 1 : post.vote })) : posts;
+      };
+      const settings = { columns: 8, gridStyle: 'apple', theme: 'dark', rating: 'all', history: [], watched: [], disabledBlacklist: [], downloadFolder: null };
+      const accountIssue = new URLSearchParams(location.search).has('accountIssue')
+        ? 'Could not access the saved key. Try again or sign in again.' : null;
+      const storageIssues = new URLSearchParams(location.search).has('storageIssue')
+        ? ['settings.json: file is damaged. The original was preserved in a backup.'] : [];
+      const failRestore = new URLSearchParams(location.search).has('failRestore');
+      const delayedAccount = new URLSearchParams(location.search).has('delayedAccount');
+      const earlyAccount = new URLSearchParams(location.search).has('earlyAccount');
+      const accountDelay = Number(new URLSearchParams(location.search).get('accountDelay')) || 900;
+      const slowWatch = new URLSearchParams(location.search).has('slowWatch');
+      const slowBlacklist = new URLSearchParams(location.search).has('slowBlacklist');
+      const slowFavorite = new URLSearchParams(location.search).has('slowFavorite');
+      const slowUpvote = new URLSearchParams(location.search).has('slowUpvote');
+      if (slowWatch) settings.watched = [{ name: 'fox', unseen: [], seen: [] }];
+      let restoreFailed = false;
+      let searchCount = 0;
+      let serverBlacklist = '';
+      const backgroundPending = new Set();
+      const accountSubscribers = new Set();
+      const persistSession = new URLSearchParams(location.search).has('resumeSession');
+      let savedSession = null;
+      if (persistSession) {
+        try { savedSession = JSON.parse(localStorage.getItem('e322-grid-session') || 'null'); } catch { /* Start with a clean fixture. */ }
+      }
+      window.e322 = {
+        saveSession: async value => { if (persistSession) localStorage.setItem('e322-grid-session', JSON.stringify(value)); },
+        onSessionFlush: () => () => {}, finishSessionFlush: async () => {},
+        bootstrap: async () => {
+          if (earlyAccount) await new Promise(resolve => setTimeout(resolve, 160));
+          return { settings, session: savedSession, profile: null, accountIssue, accountRevision: 0, storageIssues, downloads: [] };
+        },
+        saveSettings: async value => Object.assign(settings, value),
+        search: async (_query, cursor, _refresh, background) => {
+          document.documentElement.dataset.searchCount = String(++searchCount);
+          if (slowNextPage && cursor && searchCount === 2) await new Promise(resolve => setTimeout(resolve, 20000));
+          if (accountRestored && background && slowAccountSearch) await new Promise(resolve => setTimeout(resolve, 4000));
+          if (hiddenMiddlePage && cursor === '2') await new Promise(resolve => {
+            const release = event => {
+              if (event.key !== 'ArrowRight' || !document.querySelector('.viewer-id')?.textContent.includes('999841')) return;
+              document.removeEventListener('keydown', release, true);
+              resolve();
+            };
+            document.addEventListener('keydown', release, true);
+          });
+          if (background && slowWatch) await new Promise((resolve, reject) => {
+            const cancel = () => { clearTimeout(timer); backgroundPending.delete(cancel); reject(new Error('Cancelled')); };
+            const timer = setTimeout(() => { backgroundPending.delete(cancel); resolve(); }, 10000);
+            backgroundPending.add(cancel);
+          });
+          return { posts: await pagePosts(cursor || ''), fromCache: false, snapshotKey: cursor || 'first' };
+        },
+        cancelBackgroundSearch: async () => {
+          document.documentElement.dataset.watchCancelled = String(Number(document.documentElement.dataset.watchCancelled || 0) + 1);
+          for (const cancel of [...backgroundPending]) cancel();
+        },
+        snapshotPage: async key => ({ posts: await pagePosts(key === 'first' ? '' : key), fromCache: true, snapshotKey: key }),
+        pinSnapshots: async () => {},
+        restorePage: async (key, _query, cursor) => {
+          if (failRestore && key === 'first' && !restoreFailed) { restoreFailed = true; throw new Error('Fixture restore failure'); }
+          return { posts: await pagePosts(cursor || ''), fromCache: true, snapshotKey: key };
+        },
+        autocomplete: async () => [],
+        detail: async id => ({ id, file: { url: thumbnail(id), ext: 'jpg' }, sample: { url: thumbnail(id) }, preview: { url: thumbnail(id) }, tags: { general: ['fox'] }, pools: [], uploader: 'fixture' }),
+        login: async () => { throw new Error('Fixture'); }, retryAccount: async () => ({ profile: null, accountIssue }),
+        logout: async () => {}, updateBlacklist: async rules => {
+          if (!slowBlacklist) throw new Error('Fixture');
+          document.documentElement.dataset.blacklistRequestStarted = String(Number(document.documentElement.dataset.blacklistRequestStarted || 0) + 1);
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          serverBlacklist = rules;
+          document.documentElement.dataset.serverBlacklist = serverBlacklist;
+          return { id: 1, name: 'fixture-account', blacklisted_tags: serverBlacklist };
+        },
+        upvote: async () => {
+          document.documentElement.dataset.upvoteCalls = String(Number(document.documentElement.dataset.upvoteCalls || 0) + 1);
+          if (slowUpvote) await new Promise(resolve => setTimeout(resolve, 500));
+        },
+        favorite: async () => {
+          document.documentElement.dataset.favoriteCalls = String(Number(document.documentElement.dataset.favoriteCalls || 0) + 1);
+          if (slowFavorite) await new Promise(resolve => setTimeout(resolve, 500));
+        },
+        chooseFolder: async () => null,
+        startDownload: async (_post, combined) => {
+          document.documentElement.dataset[combined ? 'combinedCalls' : 'downloadCalls'] =
+            String(Number(document.documentElement.dataset[combined ? 'combinedCalls' : 'downloadCalls'] || 0) + 1);
+          return 'fixture';
+        },
+        cancelDownload: async () => {}, openPost: async () => {},
+        copyPost: async () => {}, copyText: async () => {}, onDownload: () => () => {},
+        onAccount: callback => {
+          accountSubscribers.add(callback);
+          if (delayedAccount || earlyAccount) setTimeout(() => {
+            document.documentElement.dataset.accountEvent = '1';
+            accountRestored = true;
+            for (const subscriber of accountSubscribers) subscriber({ profile: { id: 1, name: 'fixture-account', blacklisted_tags: accountBlacklist ? 'cat' : '' }, accountIssue: null, revision: 1 });
+          }, earlyAccount ? 10 : accountDelay);
+          return () => accountSubscribers.delete(callback);
+        },
+        onStorageIssues: () => () => {}, onMenu: () => () => {},
+      };
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

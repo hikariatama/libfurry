@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>libfurry</title>
+    <meta name="description" content="e621 gallery for macOS. Tag search, grid and viewer in one window." />
+    <link rel="icon" type="image/png" href="media/favicon.png?v=ios-20261026" />
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="site.css" />
+  </head>
+  <body class="site-body">
+    <main class="page site-page">
+      <header class="header site-header">
+        <img class="app-icon site-icon" src="media/icon.png?v=ios-20261026" alt="" width="44" height="44" />
+        <div class="title site-title">
+          <h1>libfurry</h1>
+          <p>e621 gallery for macOS. Tag search, grid and viewer in one window.</p>
+        </div>
+        <nav class="actions site-actions">
+          <a class="site-button primary" href="https://github.com/hikariatama/libfurry/releases/latest">Download for macOS</a>
+          <a class="site-button" href="https://github.com/hikariatama/libfurry">GitHub</a>
+        </nav>
+      </header>
+
+      <!-- Mirrors app/src/App.tsx: toolbar, masonry grid, shortcut strip. -->
+      <section class="window site-demo site-stage" aria-label="libfurry window with a masonry grid">
+        <div class="app-shell" aria-hidden="true">
+          <span class="lights"><i></i><i></i><i></i></span>
+          <div class="topbar">
+            <div class="search-pill glass">
+              <img class="app-logo" src="media/libfurry.svg" alt="" width="52" height="16" />
+              <span class="icon-button"><img class="icon" src="media/icons/search.png" alt="" /></span>
+              <span class="query">drunk_ferret -tarot</span>
+              <span class="icon-button subtle"><img class="icon" src="media/icons/close.png" alt="" /></span>
+              <span class="bar-separator"></span>
+              <span class="icon-button"><img class="icon" src="media/icons/blacklist.png" alt="" /></span>
+              <span class="icon-button secondary"><img class="icon" src="media/icons/history.png" alt="" /></span>
+              <span class="icon-button secondary"><img class="icon" src="media/icons/filter.png" alt="" /></span>
+              <span class="icon-button secondary"><img class="icon" src="media/icons/refresh.png" alt="" /></span>
+              <span class="icon-button"><img class="icon" src="media/icons/more.png" alt="" /></span>
+            </div>
+            <div class="grid-pill glass">
+              <span class="icon-button"><img class="icon" src="media/icons/gridOriginal.png" alt="" /></span>
+              <span class="range"><i></i></span>
+              <span class="columns" id="columns">5</span>
+            </div>
+          </div>
+
+          <div class="masonry" id="grid"></div>
+
+          <div class="gallery-footer">
+            <div class="shortcut-strip glass">
+              <span class="shortcut-hint"><kbd>⌘S</kbd>All</span>
+              <span class="shortcut-hint"><kbd>⌘U</kbd>Upvote</span>
+              <span class="shortcut-hint"><kbd>⌘F</kbd>Favorite</span>
+              <span class="shortcut-hint"><kbd>⌘D</kbd>Download</span>
+              <span class="shortcut-hint"><kbd>⌘/</kbd>Keys</span>
+            </div>
+            <span class="download-status glass"><img class="icon" src="media/icons/download.png" alt="" />Downloads</span>
+          </div>
+        </div>
+      </section>
+
+      <footer class="footer site-footer">
+        <a class="avx" href="https://avx.so"><img src="media/avx.svg" alt="avx.so" width="67" height="13" /></a>
+        <span>
+          <a href="https://github.com/hikariatama/libfurry/blob/main/LICENSE">AGPL-3.0</a>
+          · Not affiliated with e621
+          · Art by <a href="https://e621.net/posts?tags=drunk_ferret">drunk_ferret</a>
+        </span>
+      </footer>
+    </main>
+    <script src="main.js"></script>
+  </body>
+</html>
