@@ -169,3 +169,18 @@ test('thumbnail prefetch never loads a sample without a static preview', () => {
   assert.equal(thumbnailURL({ post: { preview_webp: null, preview_url: null, sample_url: 'https://example.invalid/full.gif' } }), null);
   assert.equal(thumbnailURL({ post: { preview_webp: null, preview_url: 'https://example.invalid/preview.jpg', sample_url: 'https://example.invalid/full.gif' } }), 'https://example.invalid/preview.jpg');
 });
+
+test('local vote transitions use the full delta and remain idempotent on fresh snapshots', () => {
+  for (const oldVote of [-1, 0, 1]) {
+    for (const vote of [-1, 0, 1]) {
+      const post = { id: 42, vote: oldVote, score: 10, fav_count: 3, is_favorited: false };
+      const override = { vote, is_favorited: true };
+      const changed = applyLocalReaction(post, override);
+      assert.equal(changed.score, 10 + vote - oldVote);
+      assert.equal(changed.fav_count, 4);
+      assert.deepEqual(applyLocalReaction(changed, override), changed);
+      assert.equal(post.score, 10);
+      assert.equal(post.vote, oldVote);
+    }
+  }
+});

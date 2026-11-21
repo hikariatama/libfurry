@@ -408,3 +408,61 @@ test('API admission is bounded and cancelled account work is not sent from the q
     assert.equal(sent.length, 2);
   } finally { release(); global.fetch = original; await fs.rm(root, { recursive: true, force: true }); }
 });
+
+test('search captures account intent before a delayed cache read', async t => {
+  for (const replacement of [null, { username: 'second', apiKey: 'test-only' }]) {
+    for (const cached of [null, { posts: [{ id: 1 }], snapshotKey: 'a'.repeat(64), etag: 'old' }]) {
+      await t.test(`${replacement ? 'switch' : 'logout'} with ${cached ? 'cache hit' : 'cache miss'}`, async () => {
+        const root = await fs.mkdtemp(path.join(os.tmpdir(), 'libfurry-auth-cache-'));
+        const originalFetch = global.fetch;
+        let release;
+        let calls = 0;
+        try {
+          const client = clientFor(root);
+          client.setCredentials({ username: 'first', apiKey: 'test-only' });
+          let cacheAccount;
+          client.cachedSearch = async (_query, _cursor, account) => {
+            cacheAccount = account;
+            return new Promise(resolve => { release = () => resolve(cached); });
+          };
+          global.fetch = async () => { calls++; throw new Error('Unexpected network request'); };
+          const searching = client.search('synthetic');
+          assert.equal(cacheAccount, 'first');
+          client.setCredentials(replacement);
+          release();
+          await assert.rejects(searching, /Account changed before the request was sent/);
+          assert.equal(calls, 0);
+          assert.equal(client.pendingRequests, 0);
+        } finally { release?.(); global.fetch = originalFetch; await fs.rm(root, { recursive: true, force: true }); }
+      });
+    }
+  }
+});
+
+test('a search queued after its cache read cannot send old credentials', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'libfurry-auth-queued-'));
+  const originalFetch = global.fetch;
+  let release;
+  let entered;
+  const gate = new Promise(resolve => { release = resolve; });
+  const started = new Promise(resolve => { entered = resolve; });
+  let calls = 0;
+  try {
+    const client = clientFor(root);
+    client.setCredentials({ username: 'first', apiKey: 'test-only' });
+    global.fetch = async () => { calls++; entered(); await gate; return new Response('{}'); };
+    const running = client.request('/tags.json');
+    await started;
+    client.cachedSearch = async () => null;
+    const searching = client.search('synthetic');
+    // Let the cache read finish and admit the search behind the running request.
+    await Promise.resolve();
+    assert.equal(client.pendingRequests, 2);
+    client.setCredentials(null);
+    release();
+    await running;
+    await assert.rejects(searching, /Account changed/);
+    assert.equal(calls, 1);
+    assert.equal(client.pendingRequests, 0);
+  } finally { release(); global.fetch = originalFetch; await fs.rm(root, { recursive: true, force: true }); }
+});

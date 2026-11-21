@@ -16,17 +16,7 @@ Relative paths require a static server, for example:
 python3 -m http.server 4321 --bind 127.0.0.1 --directory landing
 ```
 
-Open `http://127.0.0.1:4321/`. To publish, serve the contents of `landing/` as they are.
-
-## Deployment
-
-The root Dockerfile serves the static landing from this repository.
-
-Configure the deployment service to use `main`, the root build context and
-`Dockerfile`. The Docker build context includes only deployment configuration and
-`landing/`; application sources, local credentials and dependencies are excluded.
-The container serves port 80 and provides an HTTP health check. Deployment remains
-manual. Updating a remote or deploying requires a separate explicit action.
+Open `http://127.0.0.1:4321/`.
 
 ## Files
 

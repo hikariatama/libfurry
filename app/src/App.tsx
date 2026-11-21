@@ -16,7 +16,7 @@ import { applyLocalReaction, type ReactionOverride } from './reactionVisibility'
 import { pruneResidentPages } from './residentPages';
 import { filterSearchPosts } from './searchResults';
 import { nearestSurvivingId } from './scrollAnchor';
-import { captureSearchSession, discardResumedReactions, resumeSearchSession } from './searchSession';
+import { captureSearchSession, discardResumedReactions, resumeSearchSession, SearchSessionCheckpoint } from './searchSession';
 import { applyRatingFilter, completeSearchToken, explicitRating, searchTokenAtCaret } from './searchQuery';
 import { collectWatchedIds, markWatchedPost, mergeWatchedRefresh, normalizeWatched, watchedTagQuery } from './watchlist';
 import type { BlacklistRule, DownloadJob, Page, Post, PostDetail, Profile, SearchSession, Settings, Slot, TagSuggestion } from './types';
@@ -144,6 +144,7 @@ export default function App() {
   const startupSession = useRef<SearchSession | null>(null);
   const restoringPositionRef = useRef<GalleryAnchor | null>(null);
   const captureSession = useRef<() => SearchSession | null>(() => null);
+  const sessionCheckpoint = useRef(new SearchSessionCheckpoint());
   const sessionSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reactionUpdates = useRef(new Map<number, ReactionOverride>());
   const resumedReactionValues = useRef<Map<number, ReactionOverride> | null>(null);
@@ -423,11 +424,8 @@ export default function App() {
       const favorited = job.result.includes('Favorited');
       if (!voted && !favorited) return;
       reactionUpdates.current.set(job.postId, { ...reactionUpdates.current.get(job.postId), ...(voted ? { vote: 1 } : {}), ...(favorited ? { is_favorited: true } : {}) });
-      const change = (post: Post) => ({ ...post,
-        vote: voted ? 1 : post.vote,
-        score: voted && post.vote !== 1 ? post.score + 1 : post.score,
-        is_favorited: favorited || post.is_favorited,
-        fav_count: favorited && !post.is_favorited ? post.fav_count + 1 : post.fav_count,
+      const change = (post: Post) => applyLocalReaction(post, {
+        ...(voted ? { vote: 1 } : {}), ...(favorited ? { is_favorited: true } : {}),
       });
       detailLoader.current?.invalidate(job.postId);
       setPages(previous => previous.map(page => page.slots.some(slot => slot.id === job.postId) ? {
@@ -464,12 +462,13 @@ export default function App() {
   useLayoutEffect(() => { rulesRef.current = blacklist; }, [blacklist]);
 
   const search = useCallback(async (text: string, rating = settings.rating, refresh = false, keepPanel = false) => {
+    const ticket = ++generation.current;
+    sessionCheckpoint.current.begin(ticket, captureSession.current());
     clearResumedReactions();
     searchStarted.current = true;
     deferredAccountRefresh.current = false;
     setAccountRefreshPending(false);
     const clean = text.trim() || 'order:hot';
-    const ticket = ++generation.current;
     restoringPositionRef.current = null;
     setRestoringPosition(null);
     searchAccountId.current = accountSnapshot.current.profile?.id ?? null;
@@ -744,14 +743,15 @@ export default function App() {
   useLayoutEffect(() => { slotsRef.current = slots; }, [slots]);
 
   useLayoutEffect(() => {
-    captureSession.current = () => {
+    if (pages.length && pagesGeneration.current === generation.current) sessionCheckpoint.current.commit(generation.current);
+    captureSession.current = () => sessionCheckpoint.current.capture(() => {
       if (!booted || !searchReady || blacklistRebuildInFlight.current) return null;
       return captureSearchSession({
         query: submitted, draft: query, rating: settings.rating, accountId: searchAccountId.current,
         nextCursor, anchor: restoringPositionRef.current || grid.current?.captureAnchor() || null,
         counts: { raw: rawResultCount, available: availableCount, blacklisted: blacklistedCount, reacted: reactedHiddenCount },
       }, pages, reactionUpdates.current);
-    };
+    });
   }, [booted, searchReady, submitted, query, settings.rating, nextCursor, rawResultCount, availableCount, blacklistedCount, reactedHiddenCount, pages]);
   useEffect(() => {
     if (booted && searchReady) scheduleSessionSave();
@@ -922,7 +922,7 @@ export default function App() {
     try {
       await window.e322.upvote(id);
       if (revision !== accountVersion.current) return;
-      mutatePost(id, post => ({ ...post, score: post.score + (post.vote === 1 ? 0 : 1), vote: 1 }));
+      mutatePost(id, post => applyLocalReaction(post, { vote: 1 }));
       showToast('Upvoted');
     } catch (error) { if (revision === accountVersion.current) showToast(String((error as Error).message || error)); }
     finally {

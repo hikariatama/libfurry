@@ -25,3 +25,24 @@ export function resumeSearchSession(session: SearchSession, confirmedAccountId?:
 export function discardResumedReactions(current: Map<number, ReactionOverride>, resumed: Map<number, ReactionOverride>) {
   return new Map([...current].filter(([id, value]) => value !== resumed.get(id)));
 }
+
+// A replacement becomes saveable only after its first page reaches the renderer.
+export class SearchSessionCheckpoint {
+  private pending: number | null = null;
+  private previous: SearchSession | null = null;
+
+  begin(ticket: number, current: SearchSession | null) {
+    if (this.pending === null) this.previous = current;
+    this.pending = ticket;
+  }
+
+  commit(ticket: number) {
+    if (this.pending !== ticket) return;
+    this.pending = null;
+    this.previous = null;
+  }
+
+  capture(current: () => SearchSession | null): SearchSession | null {
+    return this.pending === null ? current() : this.previous;
+  }
+}

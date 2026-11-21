@@ -10,7 +10,7 @@ export function applyLocalReaction(post: Post, override?: ReactionOverride): Pos
     ...post,
     vote,
     is_favorited: favorited,
-    score: post.score + (vote === 1 && post.vote !== 1 ? 1 : vote !== 1 && post.vote === 1 ? -1 : 0),
+    score: post.score + (vote - post.vote),
     fav_count: Math.max(0, post.fav_count + (favorited && !post.is_favorited ? 1 : !favorited && post.is_favorited ? -1 : 0)),
   };
 }

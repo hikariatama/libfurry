@@ -90,8 +90,11 @@ async function restoreAccount() {
   if (accountRestore) return accountRestore;
   accountRestore = (async () => {
     const restoreGeneration = credentialGeneration;
+    const restoreRevision = accountRevision;
+    // A login can commit within the same intent if this restore began during validation.
+    const stale = () => restoreGeneration !== credentialGeneration || restoreRevision !== accountRevision;
     await credentialWriteTail;
-    if (restoreGeneration !== credentialGeneration) return { profile, accountIssue, revision: accountRevision, stale: true };
+    if (stale()) return { profile, accountIssue, revision: accountRevision, stale: true };
     if (credentialRestoreBlocked) {
       accountIssue = 'Could not finish saving the API key. Sign in again or sign out.';
       accountRevision++;
@@ -100,14 +103,14 @@ async function restoreAccount() {
     let credentials;
     try { credentials = await loadCredentials(); }
     catch {
-      if (restoreGeneration !== credentialGeneration) return { profile, accountIssue, revision: accountRevision, stale: true };
+      if (stale()) return { profile, accountIssue, revision: accountRevision, stale: true };
       profile = null;
       api.setCredentials(null);
       accountIssue = 'Could not open the saved API key. Try again or sign in again.';
       accountRevision++;
       return { profile, accountIssue, revision: accountRevision };
     }
-    if (restoreGeneration !== credentialGeneration) return { profile, accountIssue, revision: accountRevision, stale: true };
+    if (stale()) return { profile, accountIssue, revision: accountRevision, stale: true };
     if (!credentials) {
       profile = null;
       api.setCredentials(null);
@@ -117,12 +120,12 @@ async function restoreAccount() {
     }
     try {
       const checked = await api.profile(credentials);
-      if (restoreGeneration !== credentialGeneration) return { profile, accountIssue, revision: accountRevision, stale: true };
+      if (stale()) return { profile, accountIssue, revision: accountRevision, stale: true };
       api.setCredentials(credentials);
       profile = checked;
       accountIssue = null;
     } catch (error) {
-      if (restoreGeneration !== credentialGeneration) return { profile, accountIssue, revision: accountRevision, stale: true };
+      if (stale()) return { profile, accountIssue, revision: accountRevision, stale: true };
       profile = null;
       api.setCredentials(null);
       accountIssue = /^e621: (401|403)\b/.test(String(error?.message))

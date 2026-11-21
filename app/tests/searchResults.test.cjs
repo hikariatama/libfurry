@@ -33,3 +33,10 @@ test('search filtering applies local reactions and ignores sample-only posts in 
   assert.deepEqual({ available: result.available, reacted: result.reacted, visible: result.posts.length },
     { available: 1, reacted: 1, visible: 0 });
 });
+
+test('blacklist score filtering sees both points when replacing a downvote', () => {
+  const raw = [{ ...post(1, 'canine'), vote: -1, score: 9 }];
+  const result = filterSearchPosts(raw, 'fav:me', [{ text: 'score:<11', enabled: true }], new Map([[1, { vote: 1 }]]));
+  assert.equal(result.blacklisted, 0);
+  assert.equal(result.posts[0].score, 11);
+});

@@ -236,6 +236,93 @@ test('saved credentials are activated only after the profile check succeeds', as
   assert.equal(api.credentials.username, 'saved');
 });
 
+for (const [stage, outcome] of [['profile', 'success'], ['profile', 'error'], ['load', 'success'], ['load', 'missing'], ['load', 'error']]) {
+  test(`a saved-account ${stage} ${outcome} cannot replace a login committed after restore starts`, async () => {
+    const validation = Promise.withResolvers();
+    const restoreStarted = Promise.withResolvers();
+    const restoreGate = Promise.withResolvers();
+    const saved = { username: 'saved', apiKey: 'synthetic-saved-key' };
+    let stored = saved;
+    const actions = [];
+    const harness = await mainHarness({
+      validate: async credentials => { await validation.promise; return { id: 2, name: credentials.username }; },
+      loadCredentials: async () => {
+        const previous = stored;
+        if (stage === 'load') {
+          restoreStarted.resolve();
+          await restoreGate.promise;
+          if (outcome === 'error') throw new Error('Synthetic saved-key read failure');
+          if (outcome === 'missing') return null;
+        }
+        return previous;
+      },
+      profile: async credentials => {
+        assert.equal(credentials, saved);
+        restoreStarted.resolve();
+        await restoreGate.promise;
+        if (outcome === 'error') throw new Error('e621: 401 Synthetic rejected saved key');
+        return { id: 1, name: credentials.username };
+      },
+      saveCredentials: async (value, canCommit) => { assert.equal(canCommit(), true); stored = value; },
+      clearCredentials: async () => { stored = null; },
+      upvote: async () => { actions.push(['upvote', harness.api.credentials.username]); },
+      favorite: async () => { actions.push(['favorite', harness.api.credentials.username]); },
+    });
+    const login = harness.invoke('account:login', 'new', 'synthetic-new-key');
+    // A startup restore and a manual retry share the same in-flight operation.
+    if (stage === 'profile' && outcome === 'success') {
+      const timer = [...harness.timers].find(value => value.delay === 3000);
+      assert.ok(timer);
+      timer.callback();
+    }
+    const restore = harness.invoke('account:retry');
+    await restoreStarted.promise;
+    validation.resolve();
+    const committed = await login;
+    const messagesBeforeRestore = harness.messages.length;
+    restoreGate.resolve();
+    const result = await restore;
+    const boot = await harness.invoke('app:bootstrap');
+    assert.equal(boot.profile.name, 'new');
+    assert.equal(boot.accountIssue, null);
+    assert.equal(boot.accountRevision, committed.revision);
+    assert.equal(harness.api.credentials, stored);
+    assert.equal(stored.username, 'new');
+    assert.equal(result.stale, true);
+    assert.equal(harness.messages.length, messagesBeforeRestore);
+    await harness.invoke('post:upvote', 42);
+    await harness.invoke('post:favorite', 42, true);
+    assert.deepEqual(actions, [['upvote', 'new'], ['favorite', 'new']]);
+  });
+}
+
+test('a restore started during a failed login still activates the saved account', async () => {
+  const validation = Promise.withResolvers();
+  const restoreStarted = Promise.withResolvers();
+  const restoreGate = Promise.withResolvers();
+  const saved = { username: 'saved', apiKey: 'synthetic-saved-key' };
+  const { invoke, api, messages } = await mainHarness({
+    validate: async () => { await validation.promise; throw new Error('Incorrect key'); },
+    loadCredentials: async () => saved,
+    profile: async () => { restoreStarted.resolve(); await restoreGate.promise; return { id: 1, name: 'saved' }; },
+    saveCredentials: async () => { assert.fail('A failed validation must not save credentials'); },
+    clearCredentials: async () => { assert.fail('A failed validation must not delete credentials'); },
+  });
+  const login = invoke('account:login', 'wrong', 'synthetic-invalid-key');
+  const restore = invoke('account:retry');
+  await restoreStarted.promise;
+  const rejected = assert.rejects(login, /Incorrect key/);
+  validation.resolve();
+  await rejected;
+  restoreGate.resolve();
+  const result = await restore;
+  assert.equal(result.profile.name, 'saved');
+  assert.equal(api.credentials, saved);
+  assert.equal((await invoke('app:bootstrap')).accountRevision, result.revision);
+  assert.equal(messages.filter(([channel]) => channel === 'account:changed').length, 1);
+  await invoke('post:upvote', 42);
+});
+
 test('a failed login resumes an interrupted restore of saved credentials', async () => {
   let releaseFirstProfile;
   let firstProfileStarted;

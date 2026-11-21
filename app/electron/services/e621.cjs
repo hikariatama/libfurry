@@ -48,9 +48,8 @@ class E621Client {
     this.persistedSnapshots = new Set(keys.filter(key => typeof key === 'string' && /^[a-f0-9]{64}$/.test(key)));
   }
 
-  async request(route, { method = 'GET', form, auth = this.credentials, headers = {}, signal, timeoutMs = 15000, allowStaleAuth = false } = {}) {
+  async request(route, { method = 'GET', form, auth = this.credentials, headers = {}, signal, timeoutMs = 15000, allowStaleAuth = false, generation = this.authGeneration } = {}) {
     if (this.pendingRequests >= this.maxPendingRequests) throw new Error('API queue is full. Try again shortly.');
-    const generation = this.authGeneration;
     const check = () => {
       signal?.throwIfAborted();
       if (auth && !allowStaleAuth && generation !== this.authGeneration) throw new Error('Account changed before the request was sent');
@@ -151,6 +150,7 @@ class E621Client {
   async search(query, cursor = '', refresh = false, signal, background = false) {
     if (!cursor && !background) this.cancelAutocomplete();
     const credentials = this.credentials;
+    const generation = this.authGeneration;
     const account = credentials?.username.toLowerCase() || 'guest';
     const cached = await this.cachedSearch(query, cursor, account);
     const params = new URLSearchParams({ tags: query, limit: String(PAGE_SIZE), v2: 'true', mode: 'thumbnail' });
@@ -158,8 +158,10 @@ class E621Client {
     let response;
     let posts;
     try {
+      if (generation !== this.authGeneration) throw new Error('Account changed before the request was sent');
       response = await this.request(`/posts.json?${params}`, {
         auth: credentials,
+        generation,
         headers: !refresh && !credentials && cached?.etag ? { 'If-None-Match': cached.etag } : {},
         signal,
       });

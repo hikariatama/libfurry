@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const { captureSearchSession, discardResumedReactions, resumeSearchSession } = require('../src/searchSession.ts');
+const { captureSearchSession, discardResumedReactions, resumeSearchSession, SearchSessionCheckpoint } = require('../src/searchSession.ts');
 const { normalizeSession, SearchSessionStore } = require('../electron/services/search-session.cjs');
 
 function sessionAt(pageCount = 1) {
@@ -53,7 +53,7 @@ test('a new process restores a long search, pending input and exact scroll ancho
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
 
-test('new searches and returning to the top replace the previous saved position', async () => {
+test('completed searches and returning to the top replace the previous saved position', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'e322-session-top-'));
   try {
     const store = new SearchSessionStore(storageIn(root));
@@ -62,7 +62,7 @@ test('new searches and returning to the top replace the previous saved position'
     const atTop = { ...sessionAt(8), anchor: { id: 100000, offset: 48 } };
     await store.write(atTop);
     assert.deepEqual(JSON.parse(await fs.readFile(path.join(root, 'session.json'), 'utf8')).anchor, atTop.anchor);
-    const searching = { ...sessionAt(), query: 'wolf', draft: 'wolf', pages: [], nextCursor: '', anchor: null, reactions: [],
+    const searching = { ...sessionAt(), query: 'wolf', draft: 'wolf', pages: [{ cursor: '', snapshotKey: 'a'.repeat(64), slots: [] }], nextCursor: '', anchor: null, reactions: [],
       counts: { raw: 0, available: 0, blacklisted: 0, reacted: 0 } };
     await store.write(searching);
     assert.deepEqual((await new SearchSessionStore(storageIn(root)).load()).value, searching);
@@ -165,4 +165,50 @@ test('invalid sessions cannot supply paths, duplicate IDs or non-finite geometry
   const normalized = normalizeSession(value);
   assert.equal(normalized.apiKey, undefined);
   assert.equal(normalized.pages[0].posts, undefined);
+});
+
+
+test('pending and failed replacements preserve the last completed session on autosave and close', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'libfurry-session-replace-'));
+  try {
+    const storage = storageIn(root);
+    const store = new SearchSessionStore(storage);
+    await store.load();
+    const completed = sessionAt(8);
+    await store.write(completed);
+    const checkpoint = new SearchSessionCheckpoint();
+    let rendered = completed;
+    const capture = () => checkpoint.capture(() => rendered);
+    const flush = async () => { const session = capture(); if (session) await store.write(session); };
+    checkpoint.begin(1, capture());
+    rendered = { ...completed, query: 'wolf', draft: 'wolf', rating: 'e', accountId: null,
+      pages: [], reactions: [], anchor: null, nextCursor: '', counts: { raw: 0, available: 0, blacklisted: 0, reacted: 0 } };
+    await flush(); // Autosave while the first page is pending.
+    assert.deepEqual((await new SearchSessionStore(storage).load()).value, completed);
+    await flush(); // Closing after a failure still saves the completed session.
+    assert.deepEqual((await new SearchSessionStore(storage).load()).value, completed);
+    checkpoint.begin(2, capture());
+    checkpoint.commit(1); // A late first search must not release the second search.
+    await flush();
+    assert.deepEqual((await new SearchSessionStore(storage).load()).value, completed);
+    rendered = { ...rendered, pages: [{ cursor: '', snapshotKey: 'b'.repeat(64), slots: [] }] };
+    checkpoint.commit(2); // A successful empty response is a completed replacement.
+    await flush();
+    assert.deepEqual((await new SearchSessionStore(storage).load()).value, rendered);
+    const atTop = { ...sessionAt(), query: 'cat', draft: 'cat', anchor: null };
+    checkpoint.begin(3, capture());
+    rendered = atTop;
+    checkpoint.commit(3);
+    await flush();
+    assert.deepEqual((await new SearchSessionStore(storage).load()).value, atTop);
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
+test('initial pending search has no partial session to save', () => {
+  const checkpoint = new SearchSessionCheckpoint();
+  checkpoint.begin(1, null);
+  const completed = sessionAt();
+  assert.equal(checkpoint.capture(() => completed), null);
+  checkpoint.commit(1);
+  assert.equal(checkpoint.capture(() => completed), completed);
 });
